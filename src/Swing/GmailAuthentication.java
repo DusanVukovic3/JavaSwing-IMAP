@@ -1,9 +1,9 @@
 package Swing;
 
 import Model.User;
-import jakarta.mail.PasswordAuthentication;
-import jakarta.mail.Session;
-import jakarta.mail.Store;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
+import javax.mail.Store;
 import java.util.Properties;
 
 public class GmailAuthentication {
@@ -15,7 +15,7 @@ public class GmailAuthentication {
         props.put("mail.imap.port", "993");
         props.put("mail.imap.ssl.enable", "true");
 
-        Session session = Session.getInstance(props, new jakarta.mail.Authenticator() {
+        Session session = Session.getInstance(props, new javax.mail.Authenticator() {
             protected PasswordAuthentication getPasswordAuthentication() {
                 return new PasswordAuthentication(email, password);
             }

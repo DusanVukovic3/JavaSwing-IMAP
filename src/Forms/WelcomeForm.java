@@ -27,7 +27,7 @@ public class WelcomeForm extends JFrame {
     private void checkNewEmails(User user) {
         System.out.println("Checking new emails...");
         EmailManager emailManager = new EmailManager(user.getEmail(), user.getPassword());
-        emailManager.startListening();
+
         System.out.println("Email check completed.");
     }
 }
