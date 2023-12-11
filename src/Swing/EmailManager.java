@@ -5,14 +5,17 @@ import javax.mail.search.AndTerm;
 import javax.mail.search.FlagTerm;
 import javax.mail.search.ReceivedDateTerm;
 import javax.mail.search.SearchTerm;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Properties;
+import java.util.Vector;
 
 
 public class EmailManager {
     private boolean stopRetrieval = false;
-    public void handleEmailRetrieval(String host, String username, String password) {
+    public void handleEmailRetrieval(String host, String username, String password, YourSwingWorker worker) {
+
         Properties properties = new Properties();
         properties.put("mail.store.protocol", "imaps");
         properties.put("mail.imap.host", "imap.gmail.com");
@@ -40,7 +43,29 @@ public class EmailManager {
                         ? fromAddresses[0].toString()
                         : "Unknown Sender";
 
-                System.out.println("DATE: " + message.getReceivedDate() + "Subject: " + message.getSubject() + "Sender: " + sender);
+                SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd yyyy HH:mm:ss");
+                String formattedDate = null;
+
+                try {
+                    Date originalDate = message.getReceivedDate();
+
+                    if (originalDate != null) {
+                        formattedDate = dateFormat.format(originalDate);
+                    }
+
+                } catch (MessagingException | NullPointerException e) {
+                    e.printStackTrace();
+                }
+
+                System.out.println("DATE: " + formattedDate + "Subject: " + message.getSubject() + "Sender: " + sender);
+
+                Vector<String> rowData = new Vector<>();    //punjenje tabele
+
+                rowData.add(formattedDate);
+                rowData.add(message.getSubject());
+                rowData.add(sender);
+
+                worker.publishData(rowData);
             }
 
             inbox.close(false);
@@ -60,8 +85,7 @@ public class EmailManager {
         Flags seenFlag = new Flags(Flags.Flag.SEEN);
         FlagTerm unseenFlagTerm = new FlagTerm(seenFlag, false);
 
-        SearchTerm searchTerm = new AndTerm(receivedDateTerm, unseenFlagTerm);
-        return searchTerm;
+        return new AndTerm(receivedDateTerm, unseenFlagTerm);
     }
 
     public void stopEmailRetrieval() {
