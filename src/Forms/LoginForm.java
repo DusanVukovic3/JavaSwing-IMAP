@@ -37,7 +37,7 @@ public class LoginForm extends JDialog {
                 JOptionPane.showMessageDialog(LoginForm.this, "Email or password invalid", "Try again", JOptionPane.ERROR_MESSAGE);
             }
         });
-        setVisible(true); //da
+        setVisible(true);
 
     }
 

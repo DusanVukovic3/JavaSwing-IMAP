@@ -8,6 +8,8 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.Vector;
 
 public class WelcomeForm extends JFrame {
@@ -17,6 +19,8 @@ public class WelcomeForm extends JFrame {
     private SwingWorker<Void, String> emailRetrievalWorker;
     private final DefaultTableModel tableModel;
     private JTable emailTable;
+    private final JTextArea emailContentArea;
+    private final JSplitPane splitPane;
 
     public WelcomeForm(JFrame parent, User user) {
         super("Welcome Form");
@@ -33,10 +37,27 @@ public class WelcomeForm extends JFrame {
 
         emailTable = new JTable(tableModel);
         JScrollPane scrollPane = new JScrollPane(emailTable);
-        add(scrollPane, BorderLayout.CENTER);
 
-        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);    //sortiranje tabele
+        // Set up the split pane
+        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, null);
+        splitPane.setDividerLocation(400); // Adjust the initial divider location
+        add(splitPane, BorderLayout.CENTER);
+
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
         emailTable.setRowSorter(sorter);
+        emailTable.setDefaultEditor(Object.class, null);
+
+        emailTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 1) { // Single-click
+                    int selectedRow = emailTable.getSelectedRow();
+                    if (selectedRow != -1) {
+                        displayEmailContent(selectedRow);
+                    }
+                }
+            }
+        });
 
         JPanel buttonPanel = new JPanel();
         checkEmailButton = new JButton("Check New Emails");
@@ -49,8 +70,13 @@ public class WelcomeForm extends JFrame {
 
         add(buttonPanel, BorderLayout.SOUTH);
 
+        // Initialize the email content area
+        emailContentArea = new JTextArea();
+        emailContentArea.setEditable(false);
+        JScrollPane contentScrollPane = new JScrollPane(emailContentArea);
+
         pack();
-        setMinimumSize(new Dimension(600, 800));
+        setMinimumSize(new Dimension(1000, 800));
         setLocationRelativeTo(parent);
         setVisible(true);
 
@@ -61,6 +87,10 @@ public class WelcomeForm extends JFrame {
         checkEmailButton.setEnabled(false);
         stopEmailButton.setEnabled(true);
 
+        tableModel.setRowCount(0);
+        emailContentArea.setText("");
+        splitPane.setRightComponent(null);
+
         emailManager.resetStopRetrieval();
         YourSwingWorker emailRetrievalWorker = new YourSwingWorker() {
             @Override
@@ -69,12 +99,14 @@ public class WelcomeForm extends JFrame {
                 emailManager.handleEmailRetrieval("imap.gmail.com", user.getEmail(), user.getPassword(), this);
                 return null;
             }
+
             @Override
             protected void process(java.util.List<Vector<String>> chunks) {
                 for (Vector<String> chunk : chunks) {
                     tableModel.addRow(chunk);
                 }
             }
+
             @Override
             protected void done() {
                 checkEmailButton.setEnabled(true);
@@ -84,6 +116,21 @@ public class WelcomeForm extends JFrame {
         emailRetrievalWorker.execute();
     }
 
+    private void displayEmailContent(int selectedRow) {
+        String subject = (String) tableModel.getValueAt(selectedRow, 1);
+        String content = getEmailContentFromServer(subject);
+
+        SwingUtilities.invokeLater(() -> {
+            emailContentArea.setText(content);
+
+            // Create a scroll pane and set its preferred size
+            JScrollPane scrollPane = new JScrollPane(emailContentArea);
+            scrollPane.setPreferredSize(new Dimension(400, 800));
+
+            // Add the scroll pane to the content area
+            splitPane.setRightComponent(scrollPane);
+        });
+    }
 
     private void stopEmailRetrieval() {
         System.out.println("Stopping email retrieval...");
@@ -94,5 +141,9 @@ public class WelcomeForm extends JFrame {
         }
     }
 
-
+    private String getEmailContentFromServer(String subject) {
+        // Implement a method to retrieve email content from the server based on the subject.
+        // Return the email content as a string.
+        return "This is the content of the email with subject: " + subject;
+    }
 }
