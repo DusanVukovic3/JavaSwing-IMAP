@@ -1,16 +1,24 @@
 package Forms;
 
+import Model.EmailInfo;
 import Model.User;
 import Swing.EmailManager;
 import Swing.YourSwingWorker;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.Vector;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
+
 
 public class WelcomeForm extends JFrame {
     private final EmailManager emailManager;
@@ -21,6 +29,10 @@ public class WelcomeForm extends JFrame {
     private JTable emailTable;
     private final JTextArea emailContentArea;
     private final JSplitPane splitPane;
+    private List<EmailInfo> emailInfoList = new ArrayList<>();
+    private List<EmailInfo> emailInfoListOrder  = new ArrayList<>();    //za search i sort funkciju
+    private JTextField searchField;
+
 
     public WelcomeForm(JFrame parent, User user) {
         super("Welcome Form");
@@ -38,9 +50,8 @@ public class WelcomeForm extends JFrame {
         emailTable = new JTable(tableModel);
         JScrollPane scrollPane = new JScrollPane(emailTable);
 
-        // Set up the split pane
         splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, null);
-        splitPane.setDividerLocation(400); // Adjust the initial divider location
+        splitPane.setDividerLocation(400);
         add(splitPane, BorderLayout.CENTER);
 
         TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
@@ -50,12 +61,36 @@ public class WelcomeForm extends JFrame {
         emailTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 1) { // Single-click
+                if (e.getClickCount() == 1) { // Double-click
                     int selectedRow = emailTable.getSelectedRow();
                     if (selectedRow != -1) {
                         displayEmailContent(selectedRow);
                     }
                 }
+            }
+        });
+
+        searchField = new JTextField();
+        searchField.setPreferredSize(new Dimension(150, 25));
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        searchPanel.add(new JLabel("Search by subject or sender: "));
+        searchPanel.add(searchField);
+        add(searchPanel, BorderLayout.NORTH);
+
+        searchField.getDocument().addDocumentListener(new DocumentListener() {      //na svaki unos slova, searchuj
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                performSearch();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                performSearch();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                performSearch();
             }
         });
 
@@ -70,13 +105,11 @@ public class WelcomeForm extends JFrame {
 
         add(buttonPanel, BorderLayout.SOUTH);
 
-        // Initialize the email content area
         emailContentArea = new JTextArea();
         emailContentArea.setEditable(false);
-        JScrollPane contentScrollPane = new JScrollPane(emailContentArea);
 
         pack();
-        setMinimumSize(new Dimension(1000, 800));
+        setMinimumSize(new Dimension(1400, 800));
         setLocationRelativeTo(parent);
         setVisible(true);
 
@@ -94,16 +127,24 @@ public class WelcomeForm extends JFrame {
         emailManager.resetStopRetrieval();
         YourSwingWorker emailRetrievalWorker = new YourSwingWorker() {
             @Override
-            protected Void doInBackground() {
-                System.out.println("Checking new emails...");
-                emailManager.handleEmailRetrieval("imap.gmail.com", user.getEmail(), user.getPassword(), this);
+            protected Void doInBackground() throws IOException {
+                try {
+                    System.out.println("Checking new emails...");
+                    emailInfoList.clear();
+                    emailInfoListOrder.clear();
+                    emailManager.handleEmailRetrieval("imap.gmail.com", user.getEmail(), user.getPassword(), this);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 return null;
-            }
 
+            }
             @Override
-            protected void process(java.util.List<Vector<String>> chunks) {
-                for (Vector<String> chunk : chunks) {
-                    tableModel.addRow(chunk);
+            protected void process(List<EmailInfo> chunks) {
+                for (EmailInfo emailInfo : chunks) {
+                    emailInfoList.add(emailInfo);
+                    //emailInfoListOrder.add(emailInfo);      //napuni obe liste
+                    tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});
                 }
             }
 
@@ -117,20 +158,29 @@ public class WelcomeForm extends JFrame {
     }
 
     private void displayEmailContent(int selectedRow) {
-        String subject = (String) tableModel.getValueAt(selectedRow, 1);
-        String content = getEmailContentFromServer(subject);
+        EmailInfo email = emailInfoList.get(selectedRow);
+
+        String content = email.getContent();
 
         SwingUtilities.invokeLater(() -> {
-            emailContentArea.setText(content);
+            JEditorPane editorPane = new JEditorPane("text/html", content);
+            editorPane.setEditable(false);
+            editorPane.addHyperlinkListener(e -> {
+                if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
+                    try {
+                        Desktop.getDesktop().browse(e.getURL().toURI());
+                    } catch (IOException | URISyntaxException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+            });
 
-            // Create a scroll pane and set its preferred size
-            JScrollPane scrollPane = new JScrollPane(emailContentArea);
-            scrollPane.setPreferredSize(new Dimension(400, 800));
-
-            // Add the scroll pane to the content area
+            JScrollPane scrollPane = new JScrollPane(editorPane);
+            scrollPane.setPreferredSize(new Dimension(650, 800));
             splitPane.setRightComponent(scrollPane);
         });
     }
+
 
     private void stopEmailRetrieval() {
         System.out.println("Stopping email retrieval...");
@@ -141,9 +191,26 @@ public class WelcomeForm extends JFrame {
         }
     }
 
-    private String getEmailContentFromServer(String subject) {
-        // Implement a method to retrieve email content from the server based on the subject.
-        // Return the email content as a string.
-        return "This is the content of the email with subject: " + subject;
+    private void performSearch() {
+        String searchTerm = searchField.getText().toLowerCase();
+
+        TableRowSorter<DefaultTableModel> sorter = (TableRowSorter<DefaultTableModel>) emailTable.getRowSorter();
+        sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchTerm, 1, 2)); // 2. i 3. kolona, tj subject i sender
+
+        emailInfoListOrder.clear();
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            int modelRow = emailTable.convertRowIndexToModel(i);
+            emailInfoListOrder.add(emailInfoList.get(modelRow));
+        }
     }
+
+
+
+
+
+
+
+
+
+
 }
