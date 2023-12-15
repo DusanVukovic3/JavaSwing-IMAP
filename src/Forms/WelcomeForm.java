@@ -30,7 +30,8 @@ public class WelcomeForm extends JFrame {
     private final JTextArea emailContentArea;
     private final JSplitPane splitPane;
     private List<EmailInfo> emailInfoList = new ArrayList<>();
-    private List<EmailInfo> emailInfoListOrder  = new ArrayList<>();    //za search i sort funkciju
+    private List<EmailInfo> displayedEmails = new ArrayList<>(); // Prikazani mejlovi u tabeli
+
     private JTextField searchField;
 
 
@@ -131,7 +132,6 @@ public class WelcomeForm extends JFrame {
                 try {
                     System.out.println("Checking new emails...");
                     emailInfoList.clear();
-                    emailInfoListOrder.clear();
                     emailManager.handleEmailRetrieval("imap.gmail.com", user.getEmail(), user.getPassword(), this);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -158,8 +158,7 @@ public class WelcomeForm extends JFrame {
     }
 
     private void displayEmailContent(int selectedRow) {
-        EmailInfo email = emailInfoList.get(selectedRow);
-
+        EmailInfo email = displayedEmails.get(selectedRow);
         String content = email.getContent();
 
         SwingUtilities.invokeLater(() -> {
@@ -197,15 +196,32 @@ public class WelcomeForm extends JFrame {
         TableRowSorter<DefaultTableModel> sorter = (TableRowSorter<DefaultTableModel>) emailTable.getRowSorter();
         sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchTerm, 1, 2)); // 2. i 3. kolona, tj subject i sender
 
-        emailInfoListOrder.clear();
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            int modelRow = emailTable.convertRowIndexToModel(i);
-            emailInfoListOrder.add(emailInfoList.get(modelRow));
+        // Update the displayedEmails list with the filtered emails
+        displayedEmails = filterEmails(searchTerm);
+
+        // Clear existing rows from the table
+        tableModel.setRowCount(0);
+
+        // Add rows for the filtered emails
+        for (EmailInfo emailInfo : displayedEmails) {
+            tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});
         }
     }
 
+    private List<EmailInfo> filterEmails(String searchTerm) {
+        List<EmailInfo> filteredEmails = new ArrayList<>();
 
+        for (int i = 0; i < emailInfoList.size(); i++) {
+            String subject = emailInfoList.get(i).getSubject().toLowerCase();
+            String sender = emailInfoList.get(i).getSender().toLowerCase();
 
+            if (subject.contains(searchTerm) || sender.contains(searchTerm)) {
+                filteredEmails.add(emailInfoList.get(i));
+            }
+        }
+
+        return filteredEmails;
+    }
 
 
 
