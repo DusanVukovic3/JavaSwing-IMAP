@@ -31,7 +31,6 @@ public class WelcomeForm extends JFrame {
     private final JSplitPane splitPane;
     private List<EmailInfo> emailInfoList = new ArrayList<>();
     private List<EmailInfo> displayedEmails = new ArrayList<>(); // Prikazani mejlovi u tabeli
-
     private JTextField searchField;
 
 
@@ -58,11 +57,20 @@ public class WelcomeForm extends JFrame {
         TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
         emailTable.setRowSorter(sorter);
         emailTable.setDefaultEditor(Object.class, null);
+        emailTable.getTableHeader().addMouseListener(new MouseAdapter() {   //kada kliknemo header, update-uj listu
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int columnIndex = emailTable.columnAtPoint(e.getPoint());
+                sorter.toggleSortOrder(columnIndex);
+
+                performSort();
+            }
+        });
 
         emailTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 1) { // Double-click
+                if (e.getClickCount() == 1) {
                     int selectedRow = emailTable.getSelectedRow();
                     if (selectedRow != -1) {
                         displayEmailContent(selectedRow);
@@ -128,10 +136,11 @@ public class WelcomeForm extends JFrame {
         emailManager.resetStopRetrieval();
         YourSwingWorker emailRetrievalWorker = new YourSwingWorker() {
             @Override
-            protected Void doInBackground() throws IOException {
+            protected Void doInBackground() {
                 try {
                     System.out.println("Checking new emails...");
                     emailInfoList.clear();
+                    displayedEmails.clear();
                     emailManager.handleEmailRetrieval("imap.gmail.com", user.getEmail(), user.getPassword(), this);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -143,7 +152,6 @@ public class WelcomeForm extends JFrame {
             protected void process(List<EmailInfo> chunks) {
                 for (EmailInfo emailInfo : chunks) {
                     emailInfoList.add(emailInfo);
-                    //emailInfoListOrder.add(emailInfo);      //napuni obe liste
                     tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});
                 }
             }
@@ -158,7 +166,15 @@ public class WelcomeForm extends JFrame {
     }
 
     private void displayEmailContent(int selectedRow) {
-        EmailInfo email = displayedEmails.get(selectedRow);
+
+        EmailInfo email;
+
+        if (searchField.getText().isEmpty()) {
+            email = emailInfoList.get(selectedRow);     //Inicijalna lista
+        } else {
+            email = displayedEmails.get(selectedRow);   //Filtrirana lista
+        }
+
         String content = email.getContent();
 
         SwingUtilities.invokeLater(() -> {
@@ -196,19 +212,16 @@ public class WelcomeForm extends JFrame {
         TableRowSorter<DefaultTableModel> sorter = (TableRowSorter<DefaultTableModel>) emailTable.getRowSorter();
         sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchTerm, 1, 2)); // 2. i 3. kolona, tj subject i sender
 
-        // Update the displayedEmails list with the filtered emails
-        displayedEmails = filterEmails(searchTerm);
+        displayedEmails = filterEmails(searchTerm);     //u tabeli kako se filtrira, prikazuj novu listu mejlova, kako bi kad se klikne na objekte prikazao pravi content
 
-        // Clear existing rows from the table
-        tableModel.setRowCount(0);
+        tableModel.setRowCount(0);      //Ukloni prethodne redove u tabeli
 
-        // Add rows for the filtered emails
         for (EmailInfo emailInfo : displayedEmails) {
-            tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});
+            tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});   //Dodaj redove za filtrirane mejlove
         }
     }
 
-    private List<EmailInfo> filterEmails(String searchTerm) {
+    private List<EmailInfo> filterEmails(String searchTerm) {   //Ovde updateujemo zapravo tabelu, tj menjamo je, gore smo samo vizuelno
         List<EmailInfo> filteredEmails = new ArrayList<>();
 
         for (int i = 0; i < emailInfoList.size(); i++) {
@@ -222,6 +235,24 @@ public class WelcomeForm extends JFrame {
 
         return filteredEmails;
     }
+
+    private void performSort() {
+        TableRowSorter<DefaultTableModel> sorter = (TableRowSorter<DefaultTableModel>) emailTable.getRowSorter();
+        List<EmailInfo> sortedEmails = new ArrayList<>();
+
+        for (int i = 0; i < sorter.getViewRowCount(); i++) {
+            int modelRow = sorter.convertRowIndexToModel(i);
+            sortedEmails.add(emailInfoList.get(modelRow));
+        }
+
+        emailInfoList = sortedEmails;
+        tableModel.setRowCount(0);
+
+        for (EmailInfo emailInfo : sortedEmails) {
+            tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});
+        }
+    }
+
 
 
 
