@@ -25,7 +25,7 @@ public class GmailAuthentication {
         try {
             Store store = session.getStore("imap");
             store.connect();
-            user = new User(email); // Replace this with actual User creation logic
+            user = new User(email);
 
         } catch (Exception e) {
             e.printStackTrace();

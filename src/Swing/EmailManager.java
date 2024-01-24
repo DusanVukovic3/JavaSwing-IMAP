@@ -39,7 +39,6 @@ public class EmailManager {
 
             Message[] messages = inbox.search(searchTerm);
 
-
             for (Message message : messages) {
                 if (Thread.interrupted() || stopRetrieval) {
                     return;

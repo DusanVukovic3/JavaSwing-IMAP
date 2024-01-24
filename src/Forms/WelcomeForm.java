@@ -40,6 +40,7 @@ public class WelcomeForm extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         JLabel welcomeLabel = new JLabel("Welcome, " + user.getEmail() + "!");
+        welcomeLabel.setPreferredSize(new Dimension(200, 50)); // Adjust the size as needed
         add(welcomeLabel, BorderLayout.NORTH);
 
         tableModel = new DefaultTableModel();
@@ -210,12 +211,11 @@ public class WelcomeForm extends JFrame {
         String searchTerm = searchField.getText().toLowerCase();
 
         TableRowSorter<DefaultTableModel> sorter = (TableRowSorter<DefaultTableModel>) emailTable.getRowSorter();
-        sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchTerm, 1, 2)); // 2. i 3. kolona, tj subject i sender
+        sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchTerm, 1, 2));
 
-        displayedEmails = filterEmails(searchTerm);     //u tabeli kako se filtrira, prikazuj novu listu mejlova, kako bi kad se klikne na objekte prikazao pravi content
+        displayedEmails = filterEmails(searchTerm);
 
-        tableModel.setRowCount(0);      //Ukloni prethodne redove u tabeli
-
+        tableModel.setRowCount(0);
         for (EmailInfo emailInfo : displayedEmails) {
             tableModel.addRow(new Object[]{emailInfo.getFormattedDate(), emailInfo.getSubject(), emailInfo.getSender()});   //Dodaj redove za filtrirane mejlove
         }
