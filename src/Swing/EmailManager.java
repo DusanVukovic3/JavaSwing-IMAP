@@ -1,90 +1,169 @@
 package Swing;
 
-import jakarta.mail.*;
-import jakarta.mail.event.MessageCountEvent;
-import jakarta.mail.event.MessageCountListener;
 
-import javax.swing.*;
+import Model.EmailInfo;
+import jakarta.mail.*;
+import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.search.AndTerm;
+import jakarta.mail.search.FlagTerm;
+import jakarta.mail.search.ReceivedDateTerm;
+import jakarta.mail.search.SearchTerm;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 
 public class EmailManager {
-    private final String username;
-    private final String password;
-    private final Session session;
-    private boolean stopListening = false;
+    private boolean stopRetrieval = false;
+    private StringBuilder emailContentBuilder = new StringBuilder();
+    public void handleEmailRetrieval(String host, String username, String password, YourSwingWorker worker) throws IOException {
+        Properties properties = new Properties();
+        properties.put("mail.store.protocol", "imaps");
+        properties.put("mail.imap.host", "imap.gmail.com");
+        properties.put("mail.imap.port", "993");
 
-    public EmailManager(String username, String password) {
-        this.username = username;
-        this.password = password;
+        try {
+            Session session = Session.getInstance(properties);
+            Store store = session.getStore();
+            store.connect(host, username, password);
 
-        Properties props = new Properties();
-        props.put("mail.store.protocol", "imaps");
-        props.put("mail.imaps.host", "your-imap-host");
-        props.put("mail.imaps.port", "993");
+            Folder inbox = store.getFolder("INBOX");
+            inbox.open(Folder.READ_ONLY);
 
-        session = Session.getDefaultInstance(props);
-    }
+            SearchTerm searchTerm = getSearchTerm();
 
-    public void startListening() {
-        new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() {
+            Message[] messages = inbox.search(searchTerm);
+
+            for (Message message : messages) {
+                if (Thread.interrupted() || stopRetrieval) {
+                    return;
+                }
+
+                Address[] fromAddresses = message.getFrom();
+                String sender = (fromAddresses != null && fromAddresses.length > 0)
+                        ? fromAddresses[0].toString()
+                        : "Unknown Sender";
+
+                SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd yyyy HH:mm:ss");
+                String formattedDate = null;
+
                 try {
-                    Store store = session.getStore("imaps");
-                    store.connect(username, password);
+                    Date originalDate = message.getReceivedDate();
 
-                    Folder inbox = store.getFolder("INBOX");
-                    inbox.open(Folder.READ_WRITE);
-
-                    Thread keepAliveThread = new Thread(new KeepAliveRunnable(inbox), "IdleConnectionKeepAlive");
-                    keepAliveThread.start();
-
-                    inbox.addMessageCountListener(new MessageCountListener() {
-                        @Override
-                        public void messagesAdded(MessageCountEvent event) {
-                            Message[] messages = event.getMessages();
-                            for (Message message : messages) {
-                                try {
-                                    // Process or handle the received email as needed
-                                    System.out.println("Received email: " + message.getSubject());
-                                } catch (MessagingException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        }
-
-                        @Override
-                        public void messagesRemoved(MessageCountEvent messageCountEvent) {
-
-                        }
-                    });
-
-                    long startTime = System.currentTimeMillis();
-                    long durationMillis = TimeUnit.MINUTES.toMillis(1);
-
-                    while (!stopListening && System.currentTimeMillis() - startTime < durationMillis) {
-                        inbox.isOpen();
+                    if (originalDate != null) {
+                        formattedDate = dateFormat.format(originalDate);
                     }
-
-                    stopListening = true;  // Ensure that the background thread stops listening
-
-                    if (keepAliveThread.isAlive()) {
-                        keepAliveThread.interrupt();
-                    }
-                    inbox.close();
-                    store.close();
-
-                } catch (MessagingException e) {
+                } catch (MessagingException | NullPointerException e) {
                     e.printStackTrace();
                 }
-                return null;
+
+                System.out.println("KONTENT : " + message.getContentType() + " " + message.getFlags() );
+                String content = processContent(message.getContent());
+
+                EmailInfo email = new EmailInfo(formattedDate, message.getSubject(), sender, content);
+                worker.publishEmailInfo(email);
+
             }
-        }.execute();
+            inbox.close(false);
+            store.close();
+        } catch (MessagingException e) {
+            e.printStackTrace();
+        }
     }
 
-    public void stopListening() {
-        stopListening = true;  // Set the flag to stop listening
+    private static SearchTerm getSearchTerm() {
+        Calendar cal = Calendar.getInstance();
+        int currentYear = cal.get(Calendar.YEAR);
+        cal.set(currentYear, Calendar.DECEMBER, 9, 0, 0, 0);    //Poruke novije od 01.12.2023.
+        Date fromDate = cal.getTime();
+        ReceivedDateTerm receivedDateTerm = new ReceivedDateTerm(ReceivedDateTerm.GE, fromDate);
+
+        Flags seenFlag = new Flags(Flags.Flag.SEEN);
+        FlagTerm unseenFlagTerm = new FlagTerm(seenFlag, false);
+
+        return new AndTerm(receivedDateTerm, unseenFlagTerm);
     }
+
+    public void stopEmailRetrieval() {
+        stopRetrieval = true;
+    }
+
+    public void resetStopRetrieval() {
+        stopRetrieval = false;
+    }
+
+    private String processContent(Object o) throws MessagingException, IOException {
+        StringBuilder emailContentBuilder = new StringBuilder();
+
+        if (o instanceof String) {
+            emailContentBuilder.append("Text content: ").append(o).append("\n");
+        } else if (o instanceof Multipart) {
+            Multipart mp = (Multipart) o;
+            for (int i = 0; i < mp.getCount(); i++) {
+                BodyPart bodyPart = mp.getBodyPart(i);
+                if (bodyPart.getContentType().toLowerCase().startsWith("text/plain")) {
+                    emailContentBuilder.append("Text content: ").append(bodyPart.getContent()).append("\n");
+                } else if (bodyPart.getContentType().toLowerCase().startsWith("text/html")) {
+                    emailContentBuilder.append("HTML content: ").append(extractPlainTextFromHtml(bodyPart.getContent().toString())).append("\n");
+                } else if (bodyPart.getContentType().toLowerCase().startsWith("multipart/alternative")) {
+                    Multipart alternativePart = (Multipart) bodyPart.getContent();
+                    handleAlternativeContent(alternativePart, emailContentBuilder);
+                }
+            }
+        }
+        return emailContentBuilder.toString();
+    }
+
+    private void handleAlternativeContent(Multipart alternativePart, StringBuilder emailContentBuilder) throws MessagingException, IOException {
+        for (int i = 0; i < alternativePart.getCount(); i++) {
+            BodyPart alternativeBodyPart = alternativePart.getBodyPart(i);
+            if (alternativeBodyPart.getContentType().toLowerCase().startsWith("text/plain")) {
+                emailContentBuilder.append("Text content: ").append(alternativeBodyPart.getContent()).append("\n");
+            } else if (alternativeBodyPart.getContentType().toLowerCase().startsWith("text/html")) {
+                emailContentBuilder.append("HTML content: ").append(extractPlainTextFromHtml(alternativeBodyPart.getContent().toString())).append("\n");
+            }
+        }
+    }
+
+    private void handleBodyPart(BodyPart bodyPart, StringBuilder emailContentBuilder) throws MessagingException, IOException {
+        if (bodyPart instanceof MimeBodyPart) {
+            MimeBodyPart mimeBodyPart = (MimeBodyPart) bodyPart;
+            String contentType = mimeBodyPart.getContentType().toLowerCase();
+
+            System.out.println("KONTENT_______: " + contentType );
+
+            if (contentType.startsWith("text/plain")) {
+                Object content = mimeBodyPart.getContent();
+                if (content instanceof String) {
+                    emailContentBuilder.append("    ").append(content).append("\n");
+                }
+            } else if (contentType.startsWith("text/html")) {
+                String htmlContent = mimeBodyPart.getContent().toString();
+                String plainTextContent = extractPlainTextFromHtml(htmlContent);
+                emailContentBuilder.append("    ").append(plainTextContent).append("\n");
+            } else if (contentType.startsWith("multipart/alternative")) {
+                handleAlternativeContent((Multipart) mimeBodyPart.getContent(), emailContentBuilder);
+            } else {
+                String fileName = mimeBodyPart.getFileName();
+                if (fileName != null && !fileName.trim().isEmpty()) {
+                    emailContentBuilder.append("Attachment Name: ").append(fileName).append("\n");
+                }
+            }
+        } else {
+            System.out.println("Unsupported BodyPart type: " + bodyPart.getClass());
+        }
+    }
+
+
+    private String extractPlainTextFromHtml(String htmlContent) {
+        Document document = Jsoup.parse(htmlContent);
+        return document.text();
+    }
+
+
 }

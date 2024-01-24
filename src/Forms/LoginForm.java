@@ -19,7 +19,7 @@ public class LoginForm extends JDialog {
         setContentPane(loginPanel);
         setMinimumSize(new Dimension(450, 500));
         setModal(true);
-        setLocationRelativeTo(parent);
+        setLocationRelativeTo(parent); //da
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         btnOk.addActionListener(e -> {
@@ -37,7 +37,7 @@ public class LoginForm extends JDialog {
                 JOptionPane.showMessageDialog(LoginForm.this, "Email or password invalid", "Try again", JOptionPane.ERROR_MESSAGE);
             }
         });
-        setVisible(true); //da
+        setVisible(true);
 
     }
 
